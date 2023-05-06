@@ -14,7 +14,6 @@ pub struct Yesh<'a> {
 
 impl Yesh<'_> {
     pub fn new() -> Result<Self, ncursesw::NCurseswError> {
-        // TODO: also handle ctrl-d (EINTR)
         ctrlc::set_handler(|| {}).expect("cannot set ctrl-c handler");
 
         setlocale(LocaleCategory::LcAll, "");
