@@ -9,3 +9,4 @@ edition = "2021"
 ncursesw = "0.6.4"
 gettext-rs = {version = "0.7.0", features = ["gettext-system"], default_features = false}
 ctrlc = "3.2.5"
+ascii = "1.1.0"
