@@ -1,6 +1,7 @@
 use gettextrs::{setlocale, LocaleCategory};
 use ncursesw::*;
 use std::panic::PanicInfo;
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -15,11 +16,14 @@ pub struct Yesh<'a> {
     prompt: &'a str,
     command: Vec<WideChar>,
 
+    lines: Vec<Vec<ComplexChar>>,
     cursor_position: Origin,
 
     semaphore: Arc<AtomicBool>,
 
     should_exit: bool,
+
+    running_command: Option<Child>,
 }
 
 impl Yesh<'_> {
@@ -61,11 +65,14 @@ impl Yesh<'_> {
             prompt,
             command: Vec::new(),
 
+            lines: Vec::new(),
             cursor_position: Origin { x: prompt.len() as i32, y: 0 },
 
             semaphore,
 
             should_exit: false,
+
+            running_command: None,
         };
         Ok(yesh)
     }
@@ -103,8 +110,26 @@ impl Yesh<'_> {
         Ok(())
     }
 
-    fn execute_command(&mut self) {
-        todo!()
+
+    fn execute_command(&mut self) -> Result<(), NCurseswError> {
+        // let command = self.into_command();
+
+        let mut prompt_line: Vec<ComplexChar> = Vec::new();
+
+        for character in self.prompt.chars() {
+            prompt_line.push(ComplexChar::from_char(character, &self.attributes, &self.color_pair)?);
+        }
+
+        for character in &self.command {
+            prompt_line.push(ComplexChar::from_wide_char(*character, &self.attributes, &self.color_pair)?);
+        }
+        self.command.clear();
+
+        self.cursor_position.y += 1;
+
+        self.lines.push(prompt_line);
+
+        Ok(())
     }
 
     fn process_control_character(&mut self, control_character: char) {
@@ -112,7 +137,7 @@ impl Yesh<'_> {
 
         match control_character.to_ascii_char().unwrap() {
             AsciiChar::LineFeed => {
-                self.execute_command();
+                self.execute_command().unwrap();
             }
 
             // NOTE: control-c
@@ -177,9 +202,18 @@ impl Yesh<'_> {
     }
 
     pub fn render(&self) -> Result<(), ncursesw::NCurseswError> {
+        use ascii::AsciiChar;
+
         wclear(self.window)?;
 
         wmove(self.window, Origin::default())?;
+        for line in &self.lines {
+            for character in line {
+                wadd_wch(self.window, *character)?;
+            }
+            waddch(self.window, ChtypeChar::new(AsciiChar::LineFeed))?;
+        }
+
         waddstr(self.window, self.prompt)?;
         for character in &self.command {
             wadd_wch(self.window, ComplexChar::from_wide_char(*character, &self.attributes, &self.color_pair)?)?;
