@@ -1,14 +1,17 @@
-use std::panic::PanicInfo;
 use gettextrs::{setlocale, LocaleCategory};
 use ncursesw::*;
+use std::panic::PanicInfo;
 
 pub struct Yesh<'a> {
     window_size: Size,
     window: WINDOW,
-    command: Vec<WideChar>,
+
     attributes: normal::Attributes,
     color_pair: normal::ColorPair,
+
     prompt: &'a str,
+    command: Vec<WideChar>,
+
     cursor_position: Origin,
 }
 
@@ -106,8 +109,7 @@ impl Yesh<'_> {
     }
 
     fn clamp_cursor(&mut self) {
-        self.cursor_position.x = self.cursor_position.x.clamp(self.prompt.len() as i32,
-                                                              (self.command.len() + self.prompt.len()) as i32);
+        self.cursor_position.x = self.cursor_position.x.clamp(self.prompt.len() as i32, (self.command.len() + self.prompt.len()) as i32);
         self.cursor_position.y = self.cursor_position.y.clamp(0, self.window_size.lines as i32);
     }
 
