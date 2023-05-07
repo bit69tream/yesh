@@ -6,6 +6,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+struct LineView {
+    y: i32,
+    width: i32,
+    index: usize,
+    offset: usize,
+}
+
+struct CommandView {
+    y: i32,
+    width: i32,
+    offset: usize,
+}
+
 pub struct Yesh<'a> {
     window_size: Size,
     window: WINDOW,
@@ -15,9 +28,12 @@ pub struct Yesh<'a> {
 
     prompt: &'a str,
     command: Vec<WideChar>,
+    command_views: Vec<CommandView>,
 
     lines: Vec<Vec<ComplexChar>>,
+    line_views: Vec<LineView>,
     cursor_position: Origin,
+    scroll_offset: i32,
 
     control_c_semaphore: Arc<AtomicBool>,
 
@@ -64,9 +80,12 @@ impl Yesh<'_> {
 
             prompt,
             command: Vec::new(),
+            command_views: Vec::new(),
 
             lines: Vec::new(),
+            line_views: Vec::new(),
             cursor_position: Origin { x: prompt.len() as i32, y: 0 },
+            scroll_offset: 0,
 
             control_c_semaphore,
 
