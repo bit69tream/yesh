@@ -337,7 +337,7 @@ impl Yesh<'_> {
             return Ok(());
         }
 
-        wmove(self.window, Origin { x: 0, y: prompt_y });
+        wmove(self.window, Origin { x: 0, y: prompt_y })?;
         waddstr(self.window, self.prompt)?;
 
         let mut first_line: bool = true;
@@ -350,7 +350,7 @@ impl Yesh<'_> {
                     x: if first_line { self.prompt.len() as i32 } else { 0 },
                     y,
                 },
-            );
+            )?;
             first_line = false;
             if !self.is_y_on_screen(y) {
                 continue;
