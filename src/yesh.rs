@@ -19,7 +19,7 @@ pub struct Yesh<'a> {
     lines: Vec<Vec<ComplexChar>>,
     cursor_position: Origin,
 
-    semaphore: Arc<AtomicBool>,
+    control_c_semaphore: Arc<AtomicBool>,
 
     should_exit: bool,
 
@@ -28,13 +28,13 @@ pub struct Yesh<'a> {
 
 impl Yesh<'_> {
     pub fn new() -> Result<Self, ncursesw::NCurseswError> {
-        let semaphore: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+        let control_c_semaphore: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
-        let semaphore_for_ctrlc_handler = Arc::clone(&semaphore);
+        let control_c_semaphore_clone = Arc::clone(&control_c_semaphore);
         ctrlc::set_handler(move || {
-            semaphore_for_ctrlc_handler.store(true, Ordering::Relaxed);
+            control_c_semaphore_clone.store(true, Ordering::Relaxed);
         })
-        .expect("cannot set ctrl-c handler");
+        .expect("cannot set control-c handler");
 
         setlocale(LocaleCategory::LcAll, "");
         let window = initscr()?;
@@ -68,7 +68,7 @@ impl Yesh<'_> {
             lines: Vec::new(),
             cursor_position: Origin { x: prompt.len() as i32, y: 0 },
 
-            semaphore,
+            control_c_semaphore,
 
             should_exit: false,
 
