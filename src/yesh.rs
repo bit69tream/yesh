@@ -58,9 +58,8 @@ impl Yesh<'_> {
         noecho()?;
         keypad(window, true)?;
         // NOTE: the api here is just dumb.
-        //       they accept `Duration`, then they take it as seconds and divide it by 10.
-        //       and then that value is passen to ncurses library.
-        halfdelay(Duration::from_secs(10))?;
+        //       the value is accepted as a `Duration`, then gets taken as seconds and divided by 10
+        halfdelay(Duration::from_secs(1 * 10))?;
 
         let (attributes, color_pair) = {
             use ncursesw::AttributesColorPairSet::{Extend, Normal};
