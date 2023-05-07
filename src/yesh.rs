@@ -1,6 +1,9 @@
 use gettextrs::{setlocale, LocaleCategory};
 use ncursesw::*;
 use std::panic::PanicInfo;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 pub struct Yesh<'a> {
     window_size: Size,
@@ -13,17 +16,29 @@ pub struct Yesh<'a> {
     command: Vec<WideChar>,
 
     cursor_position: Origin,
+
+    semaphore: Arc<AtomicBool>,
 }
 
 impl Yesh<'_> {
     pub fn new() -> Result<Self, ncursesw::NCurseswError> {
-        ctrlc::set_handler(|| {}).expect("cannot set ctrl-c handler");
+        let semaphore: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+
+        let semaphore_for_ctrlc_handler = Arc::clone(&semaphore);
+        ctrlc::set_handler(move || {
+            semaphore_for_ctrlc_handler.store(true, Ordering::Relaxed);
+        })
+        .expect("cannot set ctrl-c handler");
 
         setlocale(LocaleCategory::LcAll, "");
         let window = initscr()?;
         cbreak()?;
         noecho()?;
         keypad(window, true)?;
+        // NOTE: the api here is just dumb.
+        //       they accept `Duration`, then they take it as seconds and divide it by 10.
+        //       and then that value is passen to ncurses library.
+        halfdelay(Duration::from_secs(10))?;
 
         let (attributes, color_pair) = {
             use ncursesw::AttributesColorPairSet::{Extend, Normal};
@@ -42,6 +57,7 @@ impl Yesh<'_> {
             color_pair,
             prompt,
             cursor_position: Origin { x: prompt.len() as i32, y: 0 },
+            semaphore,
         };
         Ok(yesh)
     }
@@ -77,13 +93,16 @@ impl Yesh<'_> {
         todo!()
     }
 
-    fn process_control_characters(&mut self, control_character: char) {
+    fn process_control_character(&mut self, control_character: char) {
         use ascii::{AsciiChar, ToAsciiChar};
 
         match control_character.to_ascii_char().unwrap() {
             AsciiChar::LineFeed => {
                 self.execute_command();
             }
+
+            // NOTE: control-c
+            AsciiChar::ETX => {}
 
             // NOTE: for some reason pressing backspace produces DEL. actual delete key is processed in `process_key`
             AsciiChar::BackSpace | AsciiChar::DEL => {
@@ -97,7 +116,7 @@ impl Yesh<'_> {
     fn process_character(&mut self, character: WideChar) -> Result<(), ncursesw::NCurseswError> {
         if let Ok(control_character) = character.as_char() {
             if control_character.is_control() {
-                self.process_control_characters(control_character);
+                self.process_control_character(control_character);
                 return Ok(());
             }
         }
@@ -116,10 +135,15 @@ impl Yesh<'_> {
     pub fn process_events(&mut self) -> Result<bool, ncursesw::NCurseswError> {
         use ncursesw::CharacterResult::{Character, Key};
 
-        let key_or_character = wget_wch(self.window)?;
-        match key_or_character {
-            Key(key) => self.process_key(key)?,
-            Character(character) => self.process_character(character)?,
+        if let Ok(key_or_character) = wget_wch(self.window) {
+            match key_or_character {
+                Key(key) => self.process_key(key)?,
+                Character(character) => self.process_character(character)?,
+            }
+        } else if self.semaphore.load(Ordering::Relaxed) {
+            use ascii::AsciiChar;
+
+            self.process_control_character(AsciiChar::ETX.as_char());
         }
 
         self.clamp_cursor();
