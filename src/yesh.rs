@@ -171,19 +171,19 @@ impl Yesh<'_> {
             }
 
             LeftArrow => {
-                self.cursor_position.x -= 1;
+                self.advance_cursor_left();
             }
 
             RightArrow => {
-                self.cursor_position.x += 1;
+                self.advance_cursor_right();
             }
 
             UpArrow => {
-                self.cursor_position.y -= 1;
+                self.advance_cursor_up();
             }
 
             DownArrow => {
-                self.cursor_position.y += 1;
+                self.advance_cursor_down();
             }
 
             ResizeEvent => {
@@ -251,14 +251,36 @@ impl Yesh<'_> {
         }
     }
 
+    fn advance_cursor_down(&mut self) {
+        let maximum_allowed_y = if self.command_views.len() > 0 {
+            self.command_views.last().unwrap().y - self.scroll_offset
+        } else if self.line_views.len() == 0 {
+            0
+        } else {
+            self.line_views.last().unwrap().y + 1
+        };
+
+        self.cursor_position.y = (self.cursor_position.y + 1).min(maximum_allowed_y);
+    }
+
     fn advance_cursor_left(&mut self) {
         self.cursor_position.x -= 1;
+
+        if self.cursor_position.x < 0 && self.cursor_position.y > 0 {
+            self.cursor_position.x = self.window_size.columns as i32;
+            self.advance_cursor_up();
+        }
+    }
+
+    fn advance_cursor_up(&mut self) {
+        self.cursor_position.y -= 1;
     }
 
     fn advance_cursor_right(&mut self) {
         self.cursor_position.x += 1;
+
         if self.cursor_position.x >= self.window_size.columns as i32 {
-            self.cursor_position.y += 1;
+            self.advance_cursor_down();
             self.cursor_position.x = 0;
         }
     }
@@ -278,11 +300,26 @@ impl Yesh<'_> {
         Ok(())
     }
 
+    fn is_cursor_on_command_prompt(&self) -> bool {
+        if self.running_command.is_some() {
+            false
+        } else if self.line_views.len() == 0 {
+            true
+        } else {
+            self.cursor_position.y > (self.line_views.last().unwrap().y)
+        }
+    }
+
     fn clamp_cursor(&mut self) {
-        let maximum_allowed_x = (self.command.len() + self.prompt.len()).min((self.window_size.columns - 1) as usize);
+        let maximum_x = (self.window_size.columns - 1) as usize;
+        let maximum_allowed_x = if self.is_cursor_on_command_prompt() {
+            (self.command.len() + self.prompt.len()).min(maximum_x)
+        } else {
+            maximum_x
+        };
 
         self.cursor_position.x = self.cursor_position.x.clamp(0, maximum_allowed_x as i32);
-        self.cursor_position.y = self.cursor_position.y.clamp(0, self.window_size.lines as i32);
+        self.cursor_position.y = self.cursor_position.y.clamp(0, self.window_size.lines as i32 - 1);
     }
 
     pub fn process_events(&mut self) -> Result<bool, ncursesw::NCurseswError> {
