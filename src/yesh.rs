@@ -18,6 +18,8 @@ pub struct Yesh<'a> {
     cursor_position: Origin,
 
     semaphore: Arc<AtomicBool>,
+
+    should_exit: bool,
 }
 
 impl Yesh<'_> {
@@ -52,12 +54,18 @@ impl Yesh<'_> {
         let yesh = Yesh {
             window,
             window_size: getmaxyx(window)?,
-            command: Vec::new(),
+
             attributes,
             color_pair,
+
             prompt,
+            command: Vec::new(),
+
             cursor_position: Origin { x: prompt.len() as i32, y: 0 },
+
             semaphore,
+
+            should_exit: false,
         };
         Ok(yesh)
     }
@@ -70,19 +78,25 @@ impl Yesh<'_> {
                 self.cursor_position.x -= 1;
                 self.command.pop();
             }
+
             DeleteCharacter => {
                 let index = self.cursor_position.x as usize - self.prompt.len();
 
-                if index < self.command.len() {
+                if self.command.len() == 0 {
+                    self.should_exit = true;
+                } else if index < self.command.len() {
                     self.command.remove(index);
                 }
             }
+
             LeftArrow => {
                 self.cursor_position.x -= 1;
             }
+
             RightArrow => {
                 self.cursor_position.x += 1;
             }
+
             _ => {}
         }
 
@@ -103,6 +117,17 @@ impl Yesh<'_> {
 
             // NOTE: control-c
             AsciiChar::ETX => {}
+
+            // NOTE: control-d
+            AsciiChar::EOT => {
+                let index = self.cursor_position.x as usize - self.prompt.len();
+
+                if self.command.len() == 0 {
+                    self.should_exit = true;
+                } else if index < self.command.len() {
+                    self.command.remove(index);
+                }
+            }
 
             // NOTE: for some reason pressing backspace produces DEL. actual delete key is processed in `process_key`
             AsciiChar::BackSpace | AsciiChar::DEL => {
@@ -148,7 +173,7 @@ impl Yesh<'_> {
 
         self.clamp_cursor();
 
-        return Ok(false);
+        return Ok(self.should_exit);
     }
 
     pub fn render(&self) -> Result<(), ncursesw::NCurseswError> {
