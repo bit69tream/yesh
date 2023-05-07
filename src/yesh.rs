@@ -333,6 +333,10 @@ impl Yesh<'_> {
     }
 
     fn render_command(&self, prompt_y: i32) -> Result<(), ncursesw::NCurseswError> {
+        if self.running_command.is_some() {
+            return Ok(());
+        }
+
         if !self.is_y_on_screen(prompt_y) {
             return Ok(());
         }
