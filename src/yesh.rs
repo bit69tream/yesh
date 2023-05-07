@@ -96,6 +96,11 @@ impl Yesh<'_> {
         Ok(yesh)
     }
 
+    fn handle_resize(&mut self) -> Result<(), ncursesw::NCurseswError> {
+        self.window_size = getmaxyx(self.window)?;
+        self.rebuild_line_views();
+        Ok(())
+    }
     fn process_key(&mut self, key: KeyBinding) -> Result<(), ncursesw::NCurseswError> {
         use ncursesw::KeyBinding::*;
 
@@ -123,6 +128,9 @@ impl Yesh<'_> {
                 self.cursor_position.x += 1;
             }
 
+            ResizeEvent => {
+                self.handle_resize()?;
+            }
             _ => {}
         }
 
