@@ -133,7 +133,7 @@ impl Yesh<'_> {
         let mut offset: usize = 0;
 
         loop {
-            let max_view_width = if (self.command_views.len() == 0) {
+            let max_view_width = if self.command_views.len() == 0 {
                 self.window_size.columns - self.prompt.len() as i32
             } else {
                 self.window_size.columns
@@ -146,7 +146,7 @@ impl Yesh<'_> {
             offset += (view_width - 1) as usize;
             remaining_width -= view_width;
 
-            if (remaining_width <= 0) {
+            if remaining_width <= 0 {
                 break;
             }
         }
@@ -309,17 +309,17 @@ impl Yesh<'_> {
         y >= self.scroll_offset && y < (self.scroll_offset + self.window_size.lines)
     }
 
-    fn render_lines(&self, y: i32) -> Result<i32, ncursesw::NCurseswError> {
-        let mut y = y;
+    fn render_lines(&self) -> Result<i32, ncursesw::NCurseswError> {
+        let mut y = 0;
         let mut drawn_something = false;
         for view in &self.line_views {
+            y = view.y - self.scroll_offset;
             if !self.is_y_on_screen(view.y) {
                 continue;
             }
 
             drawn_something = true;
-            y = view.y - self.scroll_offset;
-            wmove(self.window, Origin { x: 0, y: y })?;
+            wmove(self.window, Origin { x: 0, y })?;
             for i in 0..view.width as usize {
                 wadd_wch(self.window, self.lines[view.index][view.offset + i])?;
             }
@@ -332,11 +332,34 @@ impl Yesh<'_> {
         Ok(y)
     }
 
-    fn render_command(&self, y: i32) -> Result<(), ncursesw::NCurseswError> {
-        wmove(self.window, Origin { x: 0, y });
+    fn render_command(&self, prompt_y: i32) -> Result<(), ncursesw::NCurseswError> {
+        if !self.is_y_on_screen(prompt_y) {
+            return Ok(());
+        }
+
+        wmove(self.window, Origin { x: 0, y: prompt_y });
         waddstr(self.window, self.prompt)?;
 
-        for view in &self.command_views {}
+        let mut first_line: bool = true;
+        for view in &self.command_views {
+            let y = view.y - self.scroll_offset;
+
+            wmove(
+                self.window,
+                Origin {
+                    x: if first_line { self.prompt.len() as i32 } else { 0 },
+                    y,
+                },
+            );
+            first_line = false;
+            if !self.is_y_on_screen(y) {
+                continue;
+            }
+
+            for i in 0..view.width as usize {
+                wadd_wch(self.window, ComplexChar::from_wide_char(self.command[view.offset + i], &self.attributes, &self.color_pair)?)?;
+            }
+        }
 
         Ok(())
     }
@@ -344,11 +367,8 @@ impl Yesh<'_> {
     pub fn render(&self) -> Result<(), ncursesw::NCurseswError> {
         wclear(self.window)?;
 
-        let next_y = self.render_lines(0)?;
-
-        if self.is_y_on_screen(next_y) {
-            self.render_command(next_y)?;
-        }
+        let prompt_y = self.render_lines()?;
+        self.render_command(prompt_y)?;
 
         wmove(self.window, self.cursor_position)?;
 
