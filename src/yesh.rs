@@ -191,11 +191,11 @@ impl Yesh<'_> {
         self.command.clear();
         self.command_views.clear();
 
-        self.cursor_position.y += 1;
-        self.cursor_position.x = self.prompt.len() as i32;
-
         self.lines.push(prompt_line);
         self.rebuild_line_views();
+
+        self.advance_cursor_down();
+        self.cursor_position.x = self.prompt.len() as i32;
 
         Ok(())
     }
@@ -213,15 +213,11 @@ impl Yesh<'_> {
     }
 
     fn advance_cursor_down(&mut self) {
-        let maximum_allowed_y = if self.command_views.len() > 0 {
-            self.command_views.last().unwrap().y - self.scroll_offset
-        } else if self.line_views.len() == 0 {
-            0
-        } else {
-            self.line_views.last().unwrap().y + 1 - self.scroll_offset
-        };
+        self.cursor_position.y = (self.cursor_position.y + 1).clamp(0, self.maximum_possible_y());
 
-        self.cursor_position.y = (self.cursor_position.y + 1).min(maximum_allowed_y);
+        if !self.is_y_on_screen(self.cursor_position.y) {
+            self.scroll_offset += 1;
+        }
     }
 
     fn advance_cursor_left(&mut self) {
@@ -234,7 +230,11 @@ impl Yesh<'_> {
     }
 
     fn advance_cursor_up(&mut self) {
-        self.cursor_position.y -= 1;
+        self.cursor_position.y = (self.cursor_position.y - 1).clamp(0, self.maximum_possible_y());
+
+        if !self.is_y_on_screen(self.cursor_position.y) {
+            self.scroll_offset -= 1;
+        }
     }
 
     fn advance_cursor_right(&mut self) {
@@ -287,7 +287,7 @@ impl Yesh<'_> {
         .clamp(0, maximum_possible_x);
 
         self.cursor_position.x = self.cursor_position.x.clamp(0, maximum_allowed_x as i32);
-        self.cursor_position.y = self.cursor_position.y.clamp(0, self.window_size.lines as i32 - 1);
+        self.cursor_position.y = self.cursor_position.y.clamp(0, self.window_size.lines as i32 - 1 + self.scroll_offset);
     }
 
     pub fn process_events(&mut self) -> Result<bool, ncursesw::NCurseswError> {
@@ -309,49 +309,64 @@ impl Yesh<'_> {
         return Ok(self.should_exit);
     }
 
+    fn maximum_possible_y(&self) -> i32 {
+        let maximum_line_views_y = if self.line_views.len() > 0 { self.line_views.last().unwrap().y } else { 0 };
+        let maximum_command_views_y = if self.command_views.len() > 0 { self.command_views.last().unwrap().y } else { 0 };
+
+        if self.running_command.is_some() {
+            maximum_line_views_y
+        } else if self.command_views.len() == 0 && self.line_views.len() > 0 {
+            maximum_line_views_y + 1
+        } else {
+            maximum_command_views_y
+        }
+    }
+
     fn is_y_on_screen(&self, y: i32) -> bool {
         y >= self.scroll_offset && y < (self.scroll_offset + self.window_size.lines)
     }
 
-    fn render_lines(&self) -> Result<i32, ncursesw::NCurseswError> {
-        let mut y = 0;
-        let mut drawn_something = false;
+    fn render_lines(&self) -> Result<(), ncursesw::NCurseswError> {
         for view in &self.line_views {
-            y = view.y - self.scroll_offset;
             if !self.is_y_on_screen(view.y) {
                 continue;
             }
 
-            drawn_something = true;
-            wmove(self.window, Origin { x: 0, y })?;
+            wmove(self.window, Origin { x: 0, y: view.y - self.scroll_offset })?;
             for i in 0..view.width as usize {
                 wadd_wch(self.window, self.lines[view.index][view.offset + i])?;
             }
         }
 
-        if drawn_something {
-            y += 1;
-        }
-
-        Ok(y)
+        Ok(())
     }
 
-    fn render_command(&self, prompt_y: i32) -> Result<(), ncursesw::NCurseswError> {
+    fn render_command(&self) -> Result<(), ncursesw::NCurseswError> {
         if self.running_command.is_some() {
             return Ok(());
         }
 
+        let prompt_y = if self.line_views.len() > 0 { self.line_views.last().unwrap().y + 1 } else { 0 };
         if !self.is_y_on_screen(prompt_y) {
             return Ok(());
         }
 
-        wmove(self.window, Origin { x: 0, y: prompt_y })?;
+        wmove(
+            self.window,
+            Origin {
+                x: 0,
+                y: prompt_y - self.scroll_offset,
+            },
+        )?;
         waddstr(self.window, self.prompt)?;
 
         let mut first_line: bool = true;
         for view in &self.command_views {
             let y = view.y - self.scroll_offset;
 
+            if !self.is_y_on_screen(view.y) {
+                continue;
+            }
             wmove(
                 self.window,
                 Origin {
@@ -360,9 +375,6 @@ impl Yesh<'_> {
                 },
             )?;
             first_line = false;
-            if !self.is_y_on_screen(y) {
-                continue;
-            }
 
             for i in 0..view.width as usize {
                 wadd_wch(self.window, ComplexChar::from_wide_char(self.command[view.offset + i], &self.attributes, &self.color_pair)?)?;
@@ -375,8 +387,8 @@ impl Yesh<'_> {
     pub fn render(&self) -> Result<(), ncursesw::NCurseswError> {
         wclear(self.window)?;
 
-        let prompt_y = self.render_lines()?;
-        self.render_command(prompt_y)?;
+        self.render_lines()?;
+        self.render_command()?;
 
         let screen_cursor_position = Origin {
             x: self.cursor_position.x,
