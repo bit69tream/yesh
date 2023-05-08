@@ -151,45 +151,27 @@ impl Yesh<'_> {
         }
     }
 
+    fn delete_character_before_cursor(&mut self) {
+        self.command.pop();
+        self.rebuild_command_views();
+        self.advance_cursor_left();
+    }
+
+    fn delete_character_at_cursor(&mut self) {
+        todo!();
+    }
+
     fn process_key(&mut self, key: KeyBinding) -> Result<(), ncursesw::NCurseswError> {
         use ncursesw::KeyBinding::*;
 
         match key {
-            Backspace => {
-                self.cursor_position.x -= 1;
-                self.command.pop();
-            }
-
-            DeleteCharacter => {
-                let index = self.cursor_position.x as usize - self.prompt.len();
-
-                if self.command.len() == 0 {
-                    self.should_exit = true;
-                } else if index < self.command.len() {
-                    self.command.remove(index);
-                }
-            }
-
-            LeftArrow => {
-                self.advance_cursor_left();
-            }
-
-            RightArrow => {
-                self.advance_cursor_right();
-            }
-
-            UpArrow => {
-                self.advance_cursor_up();
-            }
-
-            DownArrow => {
-                self.advance_cursor_down();
-            }
-
-            ResizeEvent => {
-                self.handle_resize()?;
-            }
-
+            Backspace => self.delete_character_before_cursor(),
+            DeleteCharacter => self.delete_character_at_cursor(),
+            LeftArrow => self.advance_cursor_left(),
+            RightArrow => self.advance_cursor_right(),
+            UpArrow => self.advance_cursor_up(),
+            DownArrow => self.advance_cursor_down(),
+            ResizeEvent => self.handle_resize()?,
             _ => {}
         }
 
@@ -197,8 +179,6 @@ impl Yesh<'_> {
     }
 
     fn execute_command(&mut self) -> Result<(), NCurseswError> {
-        // let command = self.into_command();
-
         let mut prompt_line: Vec<ComplexChar> = Vec::new();
 
         for character in self.prompt.chars() {
@@ -224,29 +204,10 @@ impl Yesh<'_> {
         use ascii::{AsciiChar, ToAsciiChar};
 
         match control_character.to_ascii_char().unwrap() {
-            AsciiChar::LineFeed => {
-                self.execute_command().unwrap();
-            }
-
-            // NOTE: control-c
-            AsciiChar::ETX => {}
-
-            // NOTE: control-d
-            AsciiChar::EOT => {
-                let index = self.cursor_position.x as usize - self.prompt.len();
-
-                if self.command.len() == 0 {
-                    self.should_exit = true;
-                } else if index < self.command.len() {
-                    self.command.remove(index);
-                }
-            }
-
-            // NOTE: for some reason pressing backspace produces DEL. actual delete key is processed in `process_key`
-            AsciiChar::BackSpace | AsciiChar::DEL => {
-                self.command.pop();
-                self.advance_cursor_left();
-            }
+            AsciiChar::LineFeed => self.execute_command().unwrap(),
+            AsciiChar::ETX => {}                                                            // NOTE: control-c
+            AsciiChar::EOT => self.delete_character_at_cursor(),                            // NOTE: control-d
+            AsciiChar::BackSpace | AsciiChar::DEL => self.delete_character_before_cursor(), // NOTE: for some reason pressing backspace produces DEL. actual delete key is processed in `process_key`
             _ => {}
         }
     }
@@ -316,13 +277,14 @@ impl Yesh<'_> {
 
     fn clamp_cursor(&mut self) {
         let maximum_possible_x = (self.window_size.columns - 1) as usize;
-        let maximum_allowed_x = if self.is_cursor_on_command_prompt() {
-            (self.command.len() + self.prompt.len()).min(maximum_possible_x)
+        let maximum_allowed_x = (if self.is_cursor_on_command_prompt() {
+            self.command.len() + self.prompt.len()
         } else if let Some(line_view) = self.focused_line_view() {
             (line_view.width) as usize
         } else {
-            maximum_possible_x // probably should never happen
-        };
+            maximum_possible_x
+        })
+        .clamp(0, maximum_possible_x);
 
         self.cursor_position.x = self.cursor_position.x.clamp(0, maximum_allowed_x as i32);
         self.cursor_position.y = self.cursor_position.y.clamp(0, self.window_size.lines as i32 - 1);
@@ -420,6 +382,7 @@ impl Yesh<'_> {
             x: self.cursor_position.x,
             y: self.cursor_position.y - self.scroll_offset,
         };
+
         wmove(self.window, screen_cursor_position)?;
 
         wrefresh(self.window)
