@@ -257,7 +257,7 @@ impl Yesh<'_> {
         } else if self.line_views.len() == 0 {
             0
         } else {
-            self.line_views.last().unwrap().y + 1
+            self.line_views.last().unwrap().y + 1 - self.scroll_offset
         };
 
         self.cursor_position.y = (self.cursor_position.y + 1).min(maximum_allowed_y);
@@ -310,12 +310,18 @@ impl Yesh<'_> {
         }
     }
 
+    fn focused_line_view(&self) -> Option<&LineView> {
+        self.line_views.iter().find(|&view| view.y == self.cursor_position.y)
+    }
+
     fn clamp_cursor(&mut self) {
-        let maximum_x = (self.window_size.columns - 1) as usize;
+        let maximum_possible_x = (self.window_size.columns - 1) as usize;
         let maximum_allowed_x = if self.is_cursor_on_command_prompt() {
-            (self.command.len() + self.prompt.len()).min(maximum_x)
+            (self.command.len() + self.prompt.len()).min(maximum_possible_x)
+        } else if let Some(line_view) = self.focused_line_view() {
+            (line_view.width) as usize
         } else {
-            maximum_x
+            maximum_possible_x // probably should never happen
         };
 
         self.cursor_position.x = self.cursor_position.x.clamp(0, maximum_allowed_x as i32);
@@ -410,7 +416,11 @@ impl Yesh<'_> {
         let prompt_y = self.render_lines()?;
         self.render_command(prompt_y)?;
 
-        wmove(self.window, self.cursor_position)?;
+        let screen_cursor_position = Origin {
+            x: self.cursor_position.x,
+            y: self.cursor_position.y - self.scroll_offset,
+        };
+        wmove(self.window, screen_cursor_position)?;
 
         wrefresh(self.window)
     }
