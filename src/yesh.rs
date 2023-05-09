@@ -475,7 +475,14 @@ impl Yesh<'_> {
             }
 
             for i in 0..view.width as usize {
-                mvwins_wch(self.window, Origin { x: i as i32, y: view.y - self.scroll_offset }, self.lines[view.index][view.offset + i])?;
+                mvwins_wch(
+                    self.window,
+                    Origin {
+                        x: i as i32,
+                        y: view.y - self.scroll_offset,
+                    },
+                    self.lines[view.index][view.offset + i],
+                )?;
             }
         }
 
@@ -512,7 +519,11 @@ impl Yesh<'_> {
             first_line = false;
 
             for i in 0..view.width as usize {
-                mvwins_wch(self.window, Origin {x: x_offset + i as i32, y}, ComplexChar::from_wide_char(self.command[view.offset + i], &self.attributes, &self.color_pair)?)?;
+                mvwins_wch(
+                    self.window,
+                    Origin { x: x_offset + i as i32, y },
+                    ComplexChar::from_wide_char(self.command[view.offset + i], &self.attributes, &self.color_pair)?,
+                )?;
             }
         }
 
