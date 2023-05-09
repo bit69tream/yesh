@@ -588,8 +588,7 @@ fn parse_command(command: &Vec<WideChar>) -> Vec<String> {
             result.push(current_token);
             current_token = String::new();
         } else if character == '#' {
-            result.push(current_token);
-            current_token = String::new();
+            break;
         } else {
             current_token.push(character);
         }
