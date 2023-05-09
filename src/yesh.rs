@@ -114,7 +114,7 @@ impl Yesh<'_> {
                 self.line_views.push(LineView { y, width: view_width, index, offset });
 
                 y += 1;
-                offset += (view_width - 1) as usize;
+                offset += view_width as usize;
                 remaining_width -= view_width;
 
                 if remaining_width <= 0 {
@@ -142,7 +142,7 @@ impl Yesh<'_> {
             self.command_views.push(CommandView { y, width: view_width, offset });
 
             y += 1;
-            offset += (view_width - 1) as usize;
+            offset += view_width as usize;
             remaining_width -= view_width;
 
             if remaining_width <= 0 {
@@ -189,12 +189,12 @@ impl Yesh<'_> {
             prompt_line.push(ComplexChar::from_wide_char(*character, &self.attributes, &self.color_pair)?);
         }
 
+        self.lines.push(prompt_line);
+
         let parsed_command = parse_command(&self.command);
 
         self.command.clear();
         self.command_views.clear();
-
-        self.lines.push(prompt_line);
 
         if parsed_command.len() > 0 {
             if parsed_command[0] == "info" {
@@ -222,9 +222,6 @@ impl Yesh<'_> {
         }
 
         self.rebuild_line_views();
-
-        self.advance_cursor_down();
-        self.cursor_position.x = self.prompt.len() as i32;
 
         Ok(())
     }
@@ -275,6 +272,53 @@ impl Yesh<'_> {
         }
     }
 
+    fn focused_command_view_index(&self) -> Option<usize> {
+        self.command_views.iter().position(|view| view.y == self.cursor_position.y)
+    }
+
+    fn command_view_width(&self, index: usize) -> i32 {
+        if index == 0 {
+            self.command_views[index].width + self.prompt.len() as i32
+        } else {
+            self.command_views[index].width
+        }
+    }
+
+    fn command_index_at_cursor(&self) -> Option<usize> {
+        let view_index = self.focused_command_view_index();
+        if view_index.is_none() {
+            let maximum_command_view_y = self.command_views.iter().map(|view| view.y).max().unwrap_or(0);
+            if self.command_views.len() == 0 {
+                return Some(0);
+            } else if self.cursor_position.y > maximum_command_view_y && self.command_view_width(self.command_views.len() - 1) == self.window_size.columns {
+                return Some(self.command.len() - 1);
+            } else {
+                return None;
+            }
+        }
+        let view_index = view_index.unwrap();
+
+        if view_index == 0 && self.cursor_position.x < self.prompt.len() as i32 {
+            return None;
+        }
+
+        let index: isize = self.command_views[view_index].offset as isize
+            + if view_index == 0 {
+                self.cursor_position.x as isize - self.prompt.len() as isize
+            } else {
+                self.cursor_position.x as isize
+            };
+
+        let index = index as usize;
+        Some(index.clamp(0, self.command.len())) // just in case
+    }
+
+    fn insert_character_in_command_at_cursor(&mut self, character: WideChar) {
+        if let Some(index) = self.command_index_at_cursor() {
+            self.command.insert(index, character);
+        }
+    }
+
     fn process_character(&mut self, character: WideChar) -> Result<(), ncursesw::NCurseswError> {
         if let Ok(control_character) = character.as_char() {
             if control_character.is_control() {
@@ -283,9 +327,11 @@ impl Yesh<'_> {
             }
         }
 
-        self.command.push(character);
-        self.advance_cursor_right();
-        self.rebuild_command_views();
+        if self.focused_line_view().is_none() {
+            self.insert_character_in_command_at_cursor(character);
+            self.rebuild_command_views();
+            self.advance_cursor_right();
+        }
 
         Ok(())
     }
@@ -307,7 +353,15 @@ impl Yesh<'_> {
     fn clamp_cursor(&mut self) {
         let maximum_possible_x = (self.window_size.columns - 1) as usize;
         let maximum_allowed_x = (if self.is_cursor_on_command_prompt() {
-            self.command.len() + self.prompt.len()
+            if let Some(index) = self.focused_command_view_index() {
+                if index == 0 {
+                    self.prompt.len() + self.command_views[index].width as usize
+                } else {
+                    self.command_views[index].width as usize
+                }
+            } else {
+                self.prompt.len()
+            }
         } else if let Some(line_view) = self.focused_line_view() {
             (line_view.width) as usize
         } else {
@@ -316,7 +370,7 @@ impl Yesh<'_> {
         .clamp(0, maximum_possible_x);
 
         self.cursor_position.x = self.cursor_position.x.clamp(0, maximum_allowed_x as i32);
-        self.cursor_position.y = self.cursor_position.y.clamp(0, self.window_size.lines as i32 - 1 + self.scroll_offset);
+        self.cursor_position.y = self.cursor_position.y.clamp(0, self.window_size.lines as i32 + self.scroll_offset);
     }
 
     fn append_to_lines(&mut self, string: &str) -> Result<(), ncursesw::NCurseswError> {
@@ -402,7 +456,7 @@ impl Yesh<'_> {
         } else if self.command_views.len() == 0 && self.line_views.len() > 0 {
             maximum_line_views_y + 1
         } else {
-            maximum_command_views_y
+            maximum_command_views_y + 1
         }
     }
 
