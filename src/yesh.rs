@@ -197,24 +197,26 @@ impl Yesh<'_> {
         self.lines.push(prompt_line);
 
         if parsed_command.len() > 0 {
-            let child = Command::new(&parsed_command[0])
-                .args(&parsed_command[1..])
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn();
+            if parsed_command[0] == "info" {
+                let info_message = r#"    yesh  Copyright (C) 2023 bit69tream
+    This program comes with ABSOLUTELY NO WARRANTY;
+    This is free software, and you are welcome to redistribute it under certain conditions;
+    See <https://www.gnu.org/licenses/>"#;
+                self.append_to_lines(info_message)?;
+            } else {
+                let child = Command::new(&parsed_command[0])
+                    .args(&parsed_command[1..])
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn();
 
-            match child {
-                Ok(successful_child) => self.running_child = Some(successful_child),
-                Err(failed_child) => {
-                    let error: String = "yesh: ERROR: Failed to launch command: ".to_string() + &failed_child.to_string();
-
-                    let mut error_line: Vec<ComplexChar> = Vec::new();
-                    for character in error.chars() {
-                        error_line.push(ComplexChar::from_char(character, &self.attributes, &self.color_pair)?);
+                match child {
+                    Ok(successful_child) => self.running_child = Some(successful_child),
+                    Err(failed_child) => {
+                        let error_message: String = "yesh: ERROR: Failed to launch command: ".to_string() + &failed_child.to_string();
+                        self.append_to_lines(&error_message)?;
                     }
-
-                    self.lines.push(error_line);
                 }
             }
         }
@@ -317,6 +319,24 @@ impl Yesh<'_> {
         self.cursor_position.y = self.cursor_position.y.clamp(0, self.window_size.lines as i32 - 1 + self.scroll_offset);
     }
 
+    fn append_to_lines(&mut self, string: &str) -> Result<(), ncursesw::NCurseswError> {
+        let mut new_line: Vec<ComplexChar> = Vec::new();
+        for character in string.chars() {
+            if character == '\n' {
+                self.lines.push(new_line);
+                new_line = Vec::new();
+            } else {
+                new_line.push(ComplexChar::from_char(character, &self.attributes, &self.color_pair)?);
+            }
+        }
+
+        if new_line.len() > 0 {
+            self.lines.push(new_line);
+        }
+
+        Ok(())
+    }
+
     fn read_from_child(&mut self) -> Result<(), ncursesw::NCurseswError> {
         use std::io::Read;
 
@@ -325,7 +345,7 @@ impl Yesh<'_> {
         let stdout = child.stdout.as_mut().unwrap();
 
         match stdout.read_to_string(&mut output_buffer) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(error) => panic!("cannot read child's stdout into string: {}", error),
         }
         let output_buffer = output_buffer;
@@ -334,20 +354,7 @@ impl Yesh<'_> {
             return Ok(());
         }
 
-        let mut output_line: Vec<ComplexChar> = Vec::new();
-        for character in output_buffer.chars() {
-            if character == '\n' {
-                self.lines.push(output_line);
-                output_line = Vec::new();
-            } else {
-                output_line.push(ComplexChar::from_char(character, &self.attributes, &self.color_pair)?);
-            }
-        }
-
-        if output_line.len() > 0 {
-            self.lines.push(output_line);
-        }
-
+        self.append_to_lines(&output_buffer)?;
         self.rebuild_line_views();
 
         Ok(())
@@ -376,8 +383,8 @@ impl Yesh<'_> {
                 Ok(Some(_)) => {
                     drop(child);
                     self.running_child = None;
-                },
-                Ok(None) => {},
+                }
+                Ok(None) => {}
                 Err(error) => panic!("cannot wait for the child: {}", error),
             }
         }
