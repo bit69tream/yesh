@@ -188,10 +188,37 @@ impl Yesh<'_> {
         for character in &self.command {
             prompt_line.push(ComplexChar::from_wide_char(*character, &self.attributes, &self.color_pair)?);
         }
+
+        let parsed_command = parse_command(&self.command);
+
         self.command.clear();
         self.command_views.clear();
 
         self.lines.push(prompt_line);
+
+        if parsed_command.len() > 0 {
+            let child = Command::new(&parsed_command[0])
+                .args(&parsed_command[1..])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn();
+
+            match child {
+                Ok(successful_child) => self.running_command = Some(successful_child),
+                Err(failed_child) => {
+                    let error: String = "yesh: ERROR: Failed to launch command: ".to_string() + &failed_child.to_string();
+
+                    let mut error_line: Vec<ComplexChar> = Vec::new();
+                    for character in error.chars() {
+                        error_line.push(ComplexChar::from_char(character, &self.attributes, &self.color_pair)?);
+                    }
+
+                    self.lines.push(error_line);
+                }
+            }
+        }
+
         self.rebuild_line_views();
 
         self.advance_cursor_down();
@@ -417,4 +444,24 @@ pub fn panic_hook(info: &PanicInfo<'_>) {
     // NOTE: nothing will be printed if ncurses window is still open
     close_ncurses_window();
     eprintln!("{}", info);
+}
+
+fn parse_command(command: &Vec<WideChar>) -> Vec<String> {
+    let mut result: Vec<String> = Vec::new();
+    let mut current_token = String::new();
+
+    for wide_character in command.iter() {
+        let character = wide_character.as_char().expect("BUG: something not convertable to char got into `command` vector");
+        if character.is_whitespace() {
+            result.push(current_token);
+            current_token = String::new();
+        } else if character == '#' {
+            result.push(current_token);
+            current_token = String::new();
+        } else {
+            current_token.push(character);
+        }
+    }
+
+    result
 }
