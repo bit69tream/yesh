@@ -317,6 +317,42 @@ impl Yesh<'_> {
         self.cursor_position.y = self.cursor_position.y.clamp(0, self.window_size.lines as i32 - 1 + self.scroll_offset);
     }
 
+    fn read_from_child(&mut self) -> Result<(), ncursesw::NCurseswError> {
+        use std::io::Read;
+
+        let mut output_buffer = String::new();
+        let child = self.running_child.as_mut().unwrap();
+        let stdout = child.stdout.as_mut().unwrap();
+
+        match stdout.read_to_string(&mut output_buffer) {
+            Ok(_) => {},
+            Err(error) => panic!("cannot read child's stdout into string: {}", error),
+        }
+        let output_buffer = output_buffer;
+
+        if output_buffer.len() == 0 {
+            return Ok(());
+        }
+
+        let mut output_line: Vec<ComplexChar> = Vec::new();
+        for character in output_buffer.chars() {
+            if character == '\n' {
+                self.lines.push(output_line);
+                output_line = Vec::new();
+            } else {
+                output_line.push(ComplexChar::from_char(character, &self.attributes, &self.color_pair)?);
+            }
+        }
+
+        if output_line.len() > 0 {
+            self.lines.push(output_line);
+        }
+
+        self.rebuild_line_views();
+
+        Ok(())
+    }
+
     pub fn process_events(&mut self) -> Result<bool, ncursesw::NCurseswError> {
         use ncursesw::CharacterResult::{Character, Key};
 
@@ -331,8 +367,22 @@ impl Yesh<'_> {
             self.process_control_character(AsciiChar::ETX.as_char());
         }
 
-        self.clamp_cursor();
+        if self.running_child.is_some() {
+            self.read_from_child()?;
+        }
 
+        if let Some(child) = self.running_child.as_mut() {
+            match child.try_wait() {
+                Ok(Some(_)) => {
+                    drop(child);
+                    self.running_child = None;
+                },
+                Ok(None) => {},
+                Err(error) => panic!("cannot wait for the child: {}", error),
+            }
+        }
+
+        self.clamp_cursor();
         return Ok(self.should_exit);
     }
 
@@ -461,6 +511,10 @@ fn parse_command(command: &Vec<WideChar>) -> Vec<String> {
         } else {
             current_token.push(character);
         }
+    }
+
+    if current_token.len() > 0 {
+        result.push(current_token);
     }
 
     result
