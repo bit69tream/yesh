@@ -181,6 +181,10 @@ impl Yesh<'_> {
     fn execute_command(&mut self) -> Result<(), NCurseswError> {
         let mut prompt_line: Vec<ComplexChar> = Vec::new();
 
+        if !self.is_cursor_on_command_prompt() {
+            return Ok(());
+        }
+
         for character in self.prompt.chars() {
             prompt_line.push(ComplexChar::from_char(character, &self.attributes, &self.color_pair)?);
         }
@@ -470,9 +474,8 @@ impl Yesh<'_> {
                 continue;
             }
 
-            wmove(self.window, Origin { x: 0, y: view.y - self.scroll_offset })?;
             for i in 0..view.width as usize {
-                wadd_wch(self.window, self.lines[view.index][view.offset + i])?;
+                mvwins_wch(self.window, Origin { x: i as i32, y: view.y - self.scroll_offset }, self.lines[view.index][view.offset + i])?;
             }
         }
 
@@ -505,17 +508,11 @@ impl Yesh<'_> {
             if !self.is_y_on_screen(view.y) {
                 continue;
             }
-            wmove(
-                self.window,
-                Origin {
-                    x: if first_line { self.prompt.len() as i32 } else { 0 },
-                    y,
-                },
-            )?;
+            let x_offset = if first_line { self.prompt.len() as i32 } else { 0 };
             first_line = false;
 
             for i in 0..view.width as usize {
-                wadd_wch(self.window, ComplexChar::from_wide_char(self.command[view.offset + i], &self.attributes, &self.color_pair)?)?;
+                mvwins_wch(self.window, Origin {x: x_offset + i as i32, y}, ComplexChar::from_wide_char(self.command[view.offset + i], &self.attributes, &self.color_pair)?)?;
             }
         }
 
