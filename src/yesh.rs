@@ -461,7 +461,7 @@ impl Yesh<'_> {
     }
 
     fn is_y_on_screen(&self, y: i32) -> bool {
-        y >= self.scroll_offset && y < (self.scroll_offset + self.window_size.lines)
+        (y >= self.scroll_offset) && ((y - self.scroll_offset) < self.window_size.lines)
     }
 
     fn render_lines(&self) -> Result<(), ncursesw::NCurseswError> {

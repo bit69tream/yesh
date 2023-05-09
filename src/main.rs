@@ -5,6 +5,7 @@ use ncursesw::NCurseswError;
 
 fn real_main() -> Result<(), NCurseswError> {
     let mut yesh = Yesh::new()?;
+
     while !yesh.process_events()? {
         yesh.render()?;
     }
