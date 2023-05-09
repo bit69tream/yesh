@@ -152,13 +152,26 @@ impl Yesh<'_> {
     }
 
     fn delete_character_before_cursor(&mut self) {
-        self.command.pop();
-        self.rebuild_command_views();
-        self.advance_cursor_left();
+        if let Some(index) = self.command_index_at_cursor() {
+            if index == 0 {
+                return;
+            }
+
+            self.command.remove(index - 1);
+            self.rebuild_command_views();
+            self.advance_cursor_left();
+        }
     }
 
     fn delete_character_at_cursor(&mut self) {
-        todo!();
+        if let Some(index) = self.command_index_at_cursor() {
+            if index == 0 {
+                return;
+            }
+
+            self.command.remove(index);
+            self.rebuild_command_views();
+        }
     }
 
     fn process_key(&mut self, key: KeyBinding) -> Result<(), ncursesw::NCurseswError> {
