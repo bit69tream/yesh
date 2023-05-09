@@ -39,7 +39,7 @@ pub struct Yesh<'a> {
 
     should_exit: bool,
 
-    running_command: Option<Child>,
+    running_child: Option<Child>,
 }
 
 impl Yesh<'_> {
@@ -90,7 +90,7 @@ impl Yesh<'_> {
 
             should_exit: false,
 
-            running_command: None,
+            running_child: None,
         };
         Ok(yesh)
     }
@@ -205,7 +205,7 @@ impl Yesh<'_> {
                 .spawn();
 
             match child {
-                Ok(successful_child) => self.running_command = Some(successful_child),
+                Ok(successful_child) => self.running_child = Some(successful_child),
                 Err(failed_child) => {
                     let error: String = "yesh: ERROR: Failed to launch command: ".to_string() + &failed_child.to_string();
 
@@ -289,7 +289,7 @@ impl Yesh<'_> {
     }
 
     fn is_cursor_on_command_prompt(&self) -> bool {
-        if self.running_command.is_some() {
+        if self.running_child.is_some() {
             false
         } else if self.line_views.len() == 0 {
             true
@@ -340,7 +340,7 @@ impl Yesh<'_> {
         let maximum_line_views_y = if self.line_views.len() > 0 { self.line_views.last().unwrap().y } else { 0 };
         let maximum_command_views_y = if self.command_views.len() > 0 { self.command_views.last().unwrap().y } else { 0 };
 
-        if self.running_command.is_some() {
+        if self.running_child.is_some() {
             maximum_line_views_y
         } else if self.command_views.len() == 0 && self.line_views.len() > 0 {
             maximum_line_views_y + 1
@@ -369,7 +369,7 @@ impl Yesh<'_> {
     }
 
     fn render_command(&self) -> Result<(), ncursesw::NCurseswError> {
-        if self.running_command.is_some() {
+        if self.running_child.is_some() {
             return Ok(());
         }
 
