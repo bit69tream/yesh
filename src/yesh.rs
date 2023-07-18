@@ -220,6 +220,8 @@ impl Yesh<'_> {
     This is free software, and you are welcome to redistribute it under certain conditions;
     See <https://www.gnu.org/licenses/>"#;
                 self.append_to_lines(info_message)?;
+            } else if parsed_command[0] == "exit" {
+                self.should_exit = true;
             } else {
                 let child = Command::new(&parsed_command[0])
                     .args(&parsed_command[1..])
